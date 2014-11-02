@@ -13,48 +13,33 @@ use Readonly;
 Readonly::Scalar my $FCGI_LISTEN_QUEUE_DEFAULT => 100;
 
 # Version.
-our $VERSION = 0.04;
+our $VERSION = 0.05;
 
 # External request.
 our $EXT_REQUEST;
 
 # Workaround for known bug in libfcgi.
-# XXX Remove?
 while (each %ENV) { }
 
-# If ENV{'FCGI_SOCKET_PATH'} is specified, we maintain a FCGI Request handle
-# in this package variable.
-BEGIN {
-
-	# If ENV{FCGI_SOCKET_PATH} is given, explicitly open the socket,
-	# and keep the request handle around from which to call Accept().
-	if ($ENV{'FCGI_SOCKET_PATH'}) {
-		my $path = $ENV{'FCGI_SOCKET_PATH'};
-		my $backlog = $ENV{'FCGI_LISTEN_QUEUE'}
-			|| $FCGI_LISTEN_QUEUE_DEFAULT;
-		my $socket  = FCGI::OpenSocket($path, $backlog);
-		$EXT_REQUEST = FCGI::Request(\*STDIN, \*STDOUT, \*STDERR,
-			\%ENV, $socket, 1);
-	}
-}
-
-# New is slightly different in that it calls FCGI's accept() method.
+# Constructor.
 sub new {
-	my ($class, %params) = @_;
-	if (! exists $params{'init'}) {
-		if ($EXT_REQUEST) {
-			if ($EXT_REQUEST->Accept < 0) {
-				return;
-			}
+	my ($class, @params) = @_;
+	if (! defined $EXT_REQUEST) {
+		if ($ENV{'FCGI_SOCKET_PATH'}) {
+			my $path = $ENV{'FCGI_SOCKET_PATH'};
+			my $backlog = $ENV{'FCGI_LISTEN_QUEUE'}
+				|| $FCGI_LISTEN_QUEUE_DEFAULT;
+			my $socket  = FCGI::OpenSocket($path, $backlog);
+			$EXT_REQUEST = FCGI::Request(\*STDIN, \*STDOUT,
+				\*STDERR, \%ENV, $socket, 1);
 		} else {
-			my $req = FCGI::Request;
-			if ($req->Accept < 0) {
-				return;
-			}
+			$EXT_REQUEST = FCGI::Request;
 		}
 	}
-	my $self = $class->SUPER::new(%params);
-	return $self;
+	if ($EXT_REQUEST->Accept < 0) {
+		return;
+	}
+	return $class->SUPER::new(@params);
 }
 
 1;
@@ -86,7 +71,7 @@ CGI::Pure::Fast - Fast Common Gateway Interface Class for CGI::Pure.
 
 =over 8
 
-=item B<new(%parameters)>
+=item C<new(%parameters)>
 
  Constructor.
  Extends CGI::Pure for FCGI.
@@ -94,6 +79,47 @@ CGI::Pure::Fast - Fast Common Gateway Interface Class for CGI::Pure.
 =back
 
  Other methods are same as CGI::Pure.
+
+=head1 EXAMPLE
+
+ # Pragmas.
+ use strict;
+ use warnings;
+
+ # Modules.
+ use CGI::Pure::Fast;
+ use HTTP::Headers;
+
+ # HTTP header.
+ my $header = HTTP::Headers->new;
+ $header->header('Content-Type' => 'text/html');
+
+ # FCGI script.
+ my $count = 1;
+ while (my $cgi = CGI::Pure::Fast->new) {
+         print $header->as_string."\n";
+         print $count++."\n";
+ }
+
+ # Output in CGI mode:
+ # Content-Type: text/html
+ # 
+ # 1
+ # ...
+ # Content-Type: text/html
+ # 
+ # 1
+ # ...
+
+ # Output in FASTCGI mode:
+ # Content-Type: text/html
+ # 
+ # 1
+ # ...
+ # Content-Type: text/html
+ # 
+ # 2
+ # ...
 
 =head1 DEPENDENCIES
 
@@ -119,6 +145,6 @@ BSD license.
 
 =head1 VERSION
 
-0.04
+0.05
 
 =cut
